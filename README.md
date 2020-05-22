@@ -4,7 +4,7 @@ A torture test for [gemini](https://portal.mozz.us/gemini/gemini.circumlunar.spa
 
 ## Requirements
 
-Python 3.7 or higher.
+Python 3.7 or newer.
 
 Tests that inspect TLS certificates additionally require that the [pyca/cryptography](https://cryptography.io/en/latest/installation/) library be installed.
 
