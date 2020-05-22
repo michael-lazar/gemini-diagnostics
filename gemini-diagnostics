@@ -25,6 +25,7 @@ __title__ = "Gemini Diagnostics"
 __author__ = "Michael Lazar"
 __license__ = "MIT"
 __copyright__ = "(c) 2020 Michael Lazar"
+__version__ = "1.0.0"
 
 socket.setdefaulttimeout(5)
 
@@ -691,6 +692,11 @@ parser.add_argument(
     help="server port (default: 1965)",
 )
 parser.add_argument(
+    "-V", "--version",
+    action="version",
+    version="gemini-diagnostics " + __version__
+)
+parser.add_argument(
     "--checks",
     help="comma separated list of checks to apply"
 )
@@ -698,6 +704,11 @@ parser.add_argument(
     "--show-checks",
     action="store_true",
     help="display the complete list of checks and exit",
+)
+parser.add_argument(
+    "--export-checks-as-html",
+    action="store_true",
+    help=argparse.SUPPRESS,
 )
 parser.add_argument(
     "--delay",
@@ -710,6 +721,17 @@ parser.add_argument(
 
 def run():
     args = parser.parse_args()
+
+    if args.export_checks_as_html:
+        # Hidden option, used to generate the text for the README page.
+        print("<dl>")
+        for check in CHECKS:
+            print(f"<dt>[{check.__name__}]</dt>")
+            print(f"<dd>{check.__doc__}.</dd>")
+            print("")
+        print("</dl>")
+        return
+
     if args.show_checks:
         for check in CHECKS:
             log(f"[{check.__name__}]", style="title")
