@@ -6,7 +6,7 @@ A diagnostic tool for [gemini](https://portal.mozz.us/gemini/gemini.circumlunar.
 
 Python 3.7 or higher.
 
-The tests that inspect TLS certificates additionally require that [cryptography](https://cryptography.io/en/latest/installation/) be installed.
+Checks that inspect TLS certificates additionally require that the [pyca/cryptography](https://cryptography.io/en/latest/installation/) library be installed.
 
 ## History
 
