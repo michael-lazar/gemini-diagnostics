@@ -1,6 +1,6 @@
 # Gemini Diagnostics
 
-A diagnostic tool for [gemini](https://portal.mozz.us/gemini/gemini.circumlunar.space/) servers.
+A torture test for [gemini](https://portal.mozz.us/gemini/gemini.circumlunar.space/) servers.
 
 ## Requirements
 
