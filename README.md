@@ -10,7 +10,7 @@ Tests that inspect TLS certificates additionally require that the [pyca/cryptogr
 
 ## History
 
-This script originated from discussions on the [gemini mailing list](https://lists.orbitalfox.eu/listinfo/gemini) that it would be nice to have a gemini server "torture test" to uncover bugs and unhandled edge cases in new server implementations. It was originally called *jetforce-diagnostics* and was bundled with the [jetforce](https://github.com/michael-lazar/jetforce) server. Now it has been moved to its own repository and operates as a separate project.
+This script originated from an idea on the [gemini mailing list](https://lists.orbitalfox.eu/listinfo/gemini) that it would be nice to have a gemini "torture test" to uncover bugs and unhandled edge cases in new server implementations. It was originally called *jetforce-diagnostics* and was bundled with the [jetforce](https://github.com/michael-lazar/jetforce) server. Now it has been moved to its own repository and operates as a separate project.
 
 ## Usage
 
