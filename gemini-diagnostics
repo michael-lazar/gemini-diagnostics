@@ -329,11 +329,11 @@ class TLSVerified(BaseCheck):
                     ssock.sendall(f"gemini://{self.netloc}\r\n".encode())
         except Exception as e:
             if getattr(e, "verify_code", None) == 18:
-                log("Self-signed TLS certificate detected", style="warning")
+                log("Self-signed TLS certificate detected", style="success")
             else:
                 raise
         else:
-            log("Established trusted TLS connection", style="success")
+            log("CA-signed TLS certificate detected", style="warning")
 
 
 class TLSRequired(BaseCheck):
