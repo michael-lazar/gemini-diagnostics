@@ -388,7 +388,7 @@ class Homepage(BaseCheck):
         style = "success" if response.mime == "text/gemini" else "failure"
         log(f"{response.mime!r}", style)
 
-        log('Header should end with "\\r\\n"')
+        log(r'Header should end with "\r\n"')
         style = "success" if response.header.endswith("\r\n") else "failure"
         log(f"{response.header[-2:]!r}", style)
 
@@ -396,20 +396,26 @@ class Homepage(BaseCheck):
         style = "success" if response.body else "failure"
         log(f"{response.body[:50]!r}", style)
 
-        log("Body should terminate with a newline")
-        style = "success" if response.body.endswith("\n") else "failure"
-        log(f"{response.body[-1:]!r}", style)
-
-        log('Body should use "\\r\\n" line endings')
-        bad_line = None
+        log(r'Body should use consistent line endings')
+        lines = {"crlf": [], "lf": [], "other": []}
         for line in response.body.splitlines(True):
-            if not line.endswith("\r\n"):
-                bad_line = line
-                break
-        if bad_line is None:
-            log("All lines end with '\\r\\n'", style="success")
-        else:
-            log(f"Invalid line ending {bad_line!r}", style="failure")
+            if line.endswith("\r\n"):
+                lines["crlf"].append(line)
+            elif line.endswith("\n"):
+                lines["lf"].append(line)
+            elif line:
+                lines["other"].append(line)
+
+        if lines["other"]:
+            log(f"Invalid line ending: {lines['other'][0]!r}", style="failure")
+        elif lines["crlf"] and lines["lf"]:
+            log("Mixed line endings detected", style="failure")
+            log(f"Line 1: {lines['crlf'][0]!r}")
+            log(f"Line 2: {lines['lf'][0]!r}")
+        elif lines["crlf"]:
+            log(r"All lines end with \r\n", style="success")
+        elif lines["lf"]:
+            log(r"All lines end with \n", style="success")
 
 
 class HomepageRedirect(BaseCheck):
