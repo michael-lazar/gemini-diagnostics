@@ -17,9 +17,11 @@ import ssl
 import sys
 import time
 import typing
+import re
 
 if sys.version_info < (3, 7):
     sys.exit("Fatal Error: script requires Python 3.7+")
+
 
 __title__ = "Gemini Diagnostics"
 __author__ = "Michael Lazar"
@@ -27,7 +29,9 @@ __license__ = "MIT"
 __copyright__ = "(c) 2020 Michael Lazar"
 __version__ = "1.0.0"
 
+
 socket.setdefaulttimeout(5)
+
 
 # ANSI color codes
 A_BOLD = 1
@@ -41,67 +45,78 @@ FG_CYAN = 36
 FG_WHITE = 37
 
 
-def colorize(text: str, color: int) -> str:
-    """
-    Colorize text using ANSI escape codes.
-    """
-    if sys.stdout.isatty():
-        return f"\033[{color}m{text}\033[0m"
-    else:
-        return text
+LOG_STYLES = {
+    "normal": ["", None],
+    "title": ["", A_BOLD],
+    "warning": ["  ", FG_YELLOW],
+    "info": ["  ", FG_CYAN],
+    "success": ["  ✓ ", FG_GREEN],
+    "failure": ["  x ", FG_RED]
+}
 
 
-def log(text: str, style: str = "normal") -> None:
-    """
-    Print formatted text to stdout with optional styling.
-    """
-    if style == "title":
-        text = colorize(text, A_BOLD)
-    if style == "warning":
-        text = colorize(f"  {text}", FG_YELLOW)
-    elif style == "info":
-        text = colorize(f"  {text}", FG_CYAN)
-    elif style == "success":
-        text = colorize(f"  ✓ {text}", FG_GREEN)
-    elif style == "failure":
-        text = colorize(f"  x {text}", FG_RED)
+def log(text, style="normal"):
+    prefix, color = LOG_STYLES[style]
+    if prefix:
+        text = prefix + text
+    if color and sys.stdout.isatty():
+        text = f"\033[{color}m{text}\033[0m"
+
     print(text)
 
 
-def log_error(err: Exception) -> None:
-    """
-    Helper method for formatting exceptions as error messages.
-    """
-    if isinstance(err, Warning):
-        log(str(err), style="warning")
+def log_test(text, success):
+    if success:
+        log(text, "success")
     else:
-        log(str(err), style="failure")
+        log(text, "failure")
+
+
+def log_error(err) -> None:
+    text = str(err)
+    if isinstance(err, Warning):
+        log(text, style="warning")
+    else:
+        log(text, style="failure")
 
 
 class GeminiResponse:
-    def __init__(self, header):
-        self.charset: str = "utf-8"
-        self.header: str = header
-        self.body: str = ""
-        self.meta: typing.Optional[str] = None
-        self.status: typing.Optional[str] = None
-        self.mime: typing.Optional[str] = None
+
+    def __init__(self):
+        self.header = None
+        self.status = None
+        self.meta = None
+        self.body = None
+
+        # Extra info for 2x success responses
+        self.mime = None
+        self.params = {}
+
+    def read(self, fp):
+        self.header = fp.readline().decode("utf-8")
+
+        log("Response header")
+        log(f"{self.header!r}", style="info")
+
+        self.status, self.meta = header.strip().split(maxsplit=1)
+
+        if self.status.startswith("2"):
+            meta_parts = self.meta.split(";")
+            self.mime = meta_parts[0].strip()
+            for part in meta_parts[1:]:
+                name, value = part.strip().split("=", maxsplit=1)
+                self.params[name.lower()] = value
+
+        charset = self.params.get("charset", "utf-8")
+        self.body = fp.read().decode(charset)
 
 
 class BaseCheck:
-    """
-    Abstract base class for implementing server checks.
-    """
 
-    description: str = ""
-
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self, args):
         self.args = args
 
-    def run(self) -> None:
-        """
-        Run the check and log any unhandled exceptions.
-        """
+    def run(self):
         log(f"[{self.__class__.__name__}] {self.__doc__}", style="title")
         try:
             self.check()
@@ -109,7 +124,7 @@ class BaseCheck:
             log_error(e)
         log("")
 
-    def check(self) -> None:
+    def check(self):
         raise NotImplemented
 
     @property
@@ -119,10 +134,7 @@ class BaseCheck:
         else:
             return f"{self.args.host}:{self.args.port}"
 
-    def resolve_host(self, family: socket.AddressFamily) -> tuple:
-        """
-        Retrieve the IP address and connection information for the host.
-        """
+    def resolve_host(self, family):
         host = self.args.host
         port = self.args.port
         type_ = socket.SOCK_STREAM
@@ -130,13 +142,12 @@ class BaseCheck:
         addr_info = socket.getaddrinfo(host, port, family, type_, proto)
         if not addr_info:
             raise UserWarning(f"No {family} address found for host")
+
         # Gemini IPv6
         return addr_info[0][4]
 
     @contextlib.contextmanager
-    def connection(
-        self, context: typing.Optional[ssl.SSLContext] = None
-    ) -> ssl.SSLSocket:
+    def connection(self, context=None):
         """
         Setup an unverified TLS socket connection with the host.
         """
@@ -144,73 +155,37 @@ class BaseCheck:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS)
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
-        with socket.create_connection(
-            (self.args.host, self.args.port), timeout=5
-        ) as sock:
+
+        address = (self.args.host, self.args.port)
+        with socket.create_connection(address, timeout=5) as sock:
             with context.wrap_socket(sock) as ssock:
                 yield ssock
 
-    def make_request(self, url: str) -> GeminiResponse:
-        """
-        Send the request verbatim to the server and parse the response bytes.
-        """
+    def make_request(self, url):
         log("Requesting URL")
-        log(repr(url), style="info")
+        log(f"{url!r}", style="info")
         with self.connection() as sock:
             sock.sendall(url.encode(errors="surrogateescape"))
             fp = sock.makefile("rb")
-            header = fp.readline().decode()
-
-            log("Response header")
-            log(repr(header), style="info")
-
-            response = GeminiResponse(header)
-            try:
-                response.status, response.meta = header.strip().split(maxsplit=1)
-            except ValueError:
-                return response
-
-            if response.status.startswith("2"):
-                meta_parts = [part.strip() for part in response.meta.split(";")]
-                response.mime = meta_parts[0]
-                for part in meta_parts[1:]:
-                    if part.lower().startswith("charset="):
-                        response.charset = part[8:]
-
-            response.body = fp.read().decode(response.charset)
+            response = GeminiResponse()
+            response.read(fp)
             return response
 
-    def assert_success(self, response: GeminiResponse) -> None:
-        """
-        Helper method to check if a response was successful.
-        """
+    def assert_success(self, status):
         log("Status should return a success code (20 SUCCESS)")
-        style = "success" if response.status == "20" else "failure"
-        log(f"Received status of {response.status!r}", style)
+        log_test(f"Received status of {status!r}", status == "20")
 
-    def assert_permanent_failure(self, response: GeminiResponse) -> None:
-        """
-        Helper method to assert that a response returned a permanent.
-        """
+    def assert_permanent_failure(self, status):
         log("Status should return a failure code (5X PERMANENT FAILURE)")
-        style = "success" if response.status.startswith("5") else "failure"
-        log(f"Received status of {response.status!r}", style)
+        log_test(f"Received status of {status!r}", status.startswith("5"))
 
-    def assert_proxy_refused(self, response: GeminiResponse) -> None:
-        """
-        Helper method to assert that a response returned a permanent.
-        """
+    def assert_proxy_refused(self, status):
         log("Status should return a failure code (53 PROXY REQUEST REFUSED)")
-        style = "success" if response.status == "53" else "failure"
-        log(f"Received status of {response.status!r}", style)
+        log_test(f"Received status of {status!r}", status == "53")
 
-    def assert_bad_request(self, response: GeminiResponse) -> None:
-        """
-        Helper method to assert that a response returned a permanent.
-        """
+    def assert_bad_request(self, status):
         log("Status should return a failure code (59 BAD REQUEST)")
-        style = "success" if response.status == "59" else "failure"
-        log(f"Received status of {response.status!r}", style)
+        log_test(f"Received status of {status!r}", status == "59")
 
 
 class IPv4Address(BaseCheck):
@@ -220,6 +195,7 @@ class IPv4Address(BaseCheck):
         log(f"Looking up IPv4 address for {self.args.host!r}")
         addr = self.resolve_host(socket.AF_INET)
         log(f"{addr[0]!r}", style="success")
+
         log(f"Attempting to connect to {addr[0]}:{addr[1]}")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.connect(addr)
@@ -230,12 +206,13 @@ class IPv4Address(BaseCheck):
 class IPv6Address(BaseCheck):
     """Establish a connection over an IPv6 address"""
 
-    def check(self) -> None:
+    def check(self):
         log(f"Looking up IPv6 address for {self.args.host!r}")
         addr = self.resolve_host(socket.AF_INET6)
         if ipaddress.ip_address(addr[0]).ipv4_mapped:
             raise UserWarning("Found IPv4-mapped address, skipping check")
         log(f"{addr[0]!r}", style="success")
+
         log(f"Attempting to connect to [{addr[0]}]:{addr[1]}")
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
             sock.connect(addr)
@@ -246,9 +223,10 @@ class IPv6Address(BaseCheck):
 class TLSVersion(BaseCheck):
     """Server must negotiate at least TLS v1.2, ideally TLS v1.3"""
 
-    def check(self) -> None:
+    def check(self):
         log(f"Checking client library")
         log(f"{ssl.OPENSSL_VERSION!r}", style="info")
+
         log("Determining highest supported TLS version")
         with self.connection() as sock:
             version = sock.version()
@@ -263,9 +241,8 @@ class TLSVersion(BaseCheck):
 class TLSClaims(BaseCheck):
     """Certificate claims must be valid"""
 
-    def check(self) -> None:
+    def check(self):
         try:
-            # $ pip install cryptography
             import cryptography
             from cryptography.hazmat.backends import default_backend
             from cryptography.x509.oid import NameOID, ExtensionOID
@@ -281,12 +258,10 @@ class TLSClaims(BaseCheck):
             now = datetime.datetime.utcnow()
 
             log('Checking "Not Valid Before" timestamp')
-            style = "success" if cert.not_valid_before <= now else "failure"
-            log(f"{cert.not_valid_before} UTC", style)
+            log_test(f"{cert.not_valid_before} UTC", cert.not_valid_before <= now)
 
             log('Checking "Not Valid After" timestamp')
-            style = "success" if cert.not_valid_after >= now else "failure"
-            log(f"{cert.not_valid_after} UTC", style)
+            log_test(f"{cert.not_valid_after} UTC", cert.not_valid_after >= now)
 
             log("Checking subject claim matches server hostname")
             subject = []
@@ -320,7 +295,7 @@ class TLSClaims(BaseCheck):
 class TLSVerified(BaseCheck):
     """Certificate should be self-signed or have a trusted issuer"""
 
-    def check(self) -> None:
+    def check(self):
         log("Connecting over verified SSL socket")
         context = ssl.create_default_context()
         try:
@@ -339,7 +314,7 @@ class TLSVerified(BaseCheck):
 class TLSRequired(BaseCheck):
     """Non-TLS requests should be refused"""
 
-    def check(self) -> None:
+    def check(self):
         log("Sending non-TLS request")
         try:
             with socket.create_connection((self.args.host, self.args.port)) as sock:
@@ -358,7 +333,7 @@ class TLSRequired(BaseCheck):
 class ConcurrentConnections(BaseCheck):
     """Server should support concurrent connections"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://{self.netloc}/\r\n"
 
         log(f"Attempting to establish two connections")
@@ -375,26 +350,27 @@ class ConcurrentConnections(BaseCheck):
         log(f"Concurrent connections supported", style="success")
 
 
-class Homepage(BaseCheck):
-    """Request the gemini homepage"""
+class ResponseFormat(BaseCheck):
+    """Validate the response header and body for the root URL"""
 
     def check(self) -> None:
         url = f"gemini://{self.netloc}/\r\n"
         response = self.make_request(url)
 
-        self.assert_success(response)
+        self.assert_success(response.status)
+
+        log("There should be a single space between <STATUS> and <META>")
+        success = response.header[2] == " " and response.header[3] != " "
+        log_test(f"{response.header[2:4]!r}", success)
 
         log('Mime type should be "text/gemini"')
-        style = "success" if response.mime == "text/gemini" else "failure"
-        log(f"{response.mime!r}", style)
+        log_test(f"{response.mime!r}", response.mime == "text/gemini")
 
         log(r'Header should end with "\r\n"')
-        style = "success" if response.header.endswith("\r\n") else "failure"
-        log(f"{response.header[-2:]!r}", style)
+        log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
 
         log("Body should be non-empty")
-        style = "success" if response.body else "failure"
-        log(f"{response.body[:50]!r}", style)
+        log_test(f"{response.body[:50]!r}", response.body)
 
         log(r'Body should use consistent line endings')
         lines = {"crlf": [], "lf": [], "other": []}
@@ -421,51 +397,44 @@ class Homepage(BaseCheck):
 class HomepageRedirect(BaseCheck):
     """A URL with no trailing slash should redirect to the canonical resource"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://{self.netloc}\r\n"
         response = self.make_request(url)
 
         log("Status should return code 31 (REDIRECT PERMANENT)")
-        style = "success" if response.status == "31" else "failure"
-        log(f"{response.status!r}", style)
+        log_test(f"{response.status!r}", response.status == "31")
 
         log('Meta should redirect to location "gemini://[hostname]/"')
-        style = "success" if response.meta == f"gemini://{self.netloc}/" else "failure"
-        log(f"{response.meta!r}", style)
+        log_test(f"{response.meta!r}", response.meta == f"gemini://{self.netloc}/")
 
-        log('Header should end with "\\r\\n"')
-        style = "success" if response.header.endswith("\r\n") else "failure"
-        log(f"{response.header[-2:]!r}", style)
+        log(r'Header should end with "\r\n"')
+        log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
 
         log("Body should be empty")
-        style = "success" if response.body == "" else "failure"
-        log(f"{response.body[:50]!r}", style)
+        log_test(f"{response.body[:50]!r}", "success" if response.body == "" else "failure")
 
 
 class PageNotFound(BaseCheck):
     """Request a gemini URL that does not exist"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://{self.netloc}/09pdsakjo73hjn12id78\r\n"
         response = self.make_request(url)
 
         log("Status should return code 51 (NOT FOUND)")
-        style = "success" if response.status == "51" else "failure"
-        log(f"{response.status!r}", style)
+        log_test(f"{response.status!r}", response.status == "51")
 
         log('Header should end with "\\r\\n"')
-        style = "success" if response.header.endswith("\r\n") else "failure"
-        log(f"{response.header[-2:]!r}", style)
+        log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
 
         log("Body should be empty")
-        style = "success" if response.body == "" else "failure"
-        log(f"{response.body[:50]!r}", style)
+        log_test(f"{response.body[:50]!r}", response.body == "")
 
 
 class RequestMissingCR(BaseCheck):
     """A request without a <CR> should timeout"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://{self.netloc}/\n"
         try:
             response = self.make_request(url)
@@ -480,25 +449,25 @@ class RequestMissingCR(BaseCheck):
 class URLIncludePort(BaseCheck):
     """Send the URL with the port explicitly defined"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://{self.args.host}:{self.args.port}/\r\n"
         response = self.make_request(url)
-        self.assert_success(response)
+        self.assert_success(response.status)
 
 
 class URLSchemeMissing(BaseCheck):
     """A URL without a scheme should be inferred as gemini"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"//{self.netloc}/\r\n"
         response = self.make_request(url)
-        self.assert_success(response)
+        self.assert_success(response.status)
 
 
 class URLByIPAddress(BaseCheck):
     """Send the URL using the IPv4 address"""
 
-    def check(self) -> None:
+    def check(self):
         addr = self.resolve_host(socket.AF_INET)
         url = f"gemini://{addr[0]}:{addr[1]}/\r\n"
         response = self.make_request(url)
@@ -510,7 +479,7 @@ class URLByIPAddress(BaseCheck):
 class URLInvalidUTF8Byte(BaseCheck):
     """Send a URL containing a non-UTF8 byte sequence"""
 
-    def check(self) -> None:
+    def check(self):
         non_utf8_character = "\udcdc"  # Surrogate-escaped byte sequence
         url = f"gemini://{self.netloc}/{non_utf8_character}\r\n"
 
@@ -523,14 +492,13 @@ class URLInvalidUTF8Byte(BaseCheck):
         if response is None:
             log("Connection closed without response", style="success")
         else:
-            style = "success" if response.status == "59" else "failure"
-            log(f"{response.status!r}", style)
+            log_test(f"{response.status!r}", response.status == "59")
 
 
 class URLMaxSize(BaseCheck):
     """Send a 1024 byte URL, the maximum allowed size"""
 
-    def check(self) -> None:
+    def check(self):
         # Per the spec, the <CR><LF> are not included in the total size
         base_url = f"gemini://{self.netloc}/"
         buffer = "0" * (1024 - len(base_url.encode("utf-8")))
@@ -538,14 +506,13 @@ class URLMaxSize(BaseCheck):
 
         response = self.make_request(url)
         log("Status should return code 51 (NOT FOUND)")
-        style = "success" if response.status == "51" else "failure"
-        log(f"{response.status!r}", style)
+        log_test(f"{response.status!r}", response.status == "51")
 
 
 class URLAboveMaxSize(BaseCheck):
     """Send a 1025 byte URL, above the maximum allowed size"""
 
-    def check(self) -> None:
+    def check(self):
         # Per the spec, the <CR><LF> are not included in the total size
         base_url = f"gemini://{self.netloc}/"
         buffer = "0" * (1025 - len(base_url.encode("utf-8")))
@@ -560,93 +527,90 @@ class URLAboveMaxSize(BaseCheck):
         if response is None:
             log("Connection closed without response", style="success")
         else:
-            style = "success" if response.status == "59" else "failure"
-            log(f"{response.status!r}", style)
+            log(f"{response.status!r}", response.status == "59")
 
 
 class URLWrongPort(BaseCheck):
     """A URL with an incorrect port number should be rejected"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://{self.args.host}:443/\r\n"
         response = self.make_request(url)
-        self.assert_proxy_refused(response)
+        self.assert_proxy_refused(response.status)
 
 
 class URLWrongHost(BaseCheck):
     """A URL with a foreign hostname should be rejected"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://wikipedia.org/\r\n"
         response = self.make_request(url)
-        self.assert_proxy_refused(response)
+        self.assert_proxy_refused(response.status)
 
 
 class URLSchemeHTTP(BaseCheck):
     """Send a URL with an HTTP scheme"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"http://{self.netloc}/\r\n"
         response = self.make_request(url)
-        self.assert_proxy_refused(response)
+        self.assert_proxy_refused(response.status)
 
 
 class URLSchemeHTTPS(BaseCheck):
     """Send a URL with an HTTPS scheme"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"https://{self.netloc}/\r\n"
         response = self.make_request(url)
-        self.assert_proxy_refused(response)
+        self.assert_proxy_refused(response.status)
 
 
 class URLSchemeGopher(BaseCheck):
     """Send a URL with a Gopher scheme"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gopher://{self.netloc}/\r\n"
         response = self.make_request(url)
-        self.assert_proxy_refused(response)
+        self.assert_proxy_refused(response.status)
 
 
 class URLEmpty(BaseCheck):
     """Empty URLs should not be accepted by the server"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"\r\n"
         response = self.make_request(url)
-        self.assert_bad_request(response)
+        self.assert_bad_request(response.status)
 
 
 class URLRelative(BaseCheck):
     """Relative URLs should not be accepted by the server"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"/\r\n"
         response = self.make_request(url)
-        self.assert_bad_request(response)
+        self.assert_bad_request(response.status)
 
 
 class URLInvalid(BaseCheck):
     """Random text should not be accepted by the server"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"Hello Gemini!\r\n"
         response = self.make_request(url)
-        self.assert_bad_request(response)
+        self.assert_bad_request(response.status)
 
 
 class URLDotEscape(BaseCheck):
     """A URL should not be able to escape the root using dot notation"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://{self.netloc}/../../\r\n"
         response = self.make_request(url)
-        self.assert_permanent_failure(response)
+        self.assert_permanent_failure(response.status)
 
 
-# TODO: Test sending a transient client certificate
-# TODO: Test with client pinned to TLS v1.1
 CHECKS = [
     IPv4Address,
     IPv6Address,
