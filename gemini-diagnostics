@@ -98,7 +98,7 @@ class GeminiResponse:
         log("Response header")
         log(f"{self.header!r}", style="info")
 
-        self.status, self.meta = header.strip().split(maxsplit=1)
+        self.status, self.meta = self.header.strip().split(maxsplit=1)
 
         if self.status.startswith("2"):
             meta_parts = self.meta.split(";")
@@ -111,7 +111,19 @@ class GeminiResponse:
         self.body = fp.read().decode(charset)
 
 
-class BaseCheck:
+CHECKS = []
+
+
+class CheckRegistry(type):
+
+    def __new__(cls, name, bases, namespace):
+        cls = type.__new__(cls, name, bases, namespace)
+        if name != 'BaseCheck':
+            CHECKS.append(cls)
+        return cls
+
+
+class BaseCheck(metaclass=CheckRegistry):
 
     def __init__(self, args):
         self.args = args
@@ -411,7 +423,7 @@ class HomepageRedirect(BaseCheck):
         log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
 
         log("Body should be empty")
-        log_test(f"{response.body[:50]!r}", "success" if response.body == "" else "failure")
+        log_test(f"{response.body[:50]!r}", response.body == "")
 
 
 class PageNotFound(BaseCheck):
@@ -527,7 +539,7 @@ class URLAboveMaxSize(BaseCheck):
         if response is None:
             log("Connection closed without response", style="success")
         else:
-            log(f"{response.status!r}", response.status == "59")
+            log_test(f"{response.status!r}", response.status == "59")
 
 
 class URLWrongPort(BaseCheck):
@@ -611,36 +623,6 @@ class URLDotEscape(BaseCheck):
         self.assert_permanent_failure(response.status)
 
 
-CHECKS = [
-    IPv4Address,
-    IPv6Address,
-    TLSVersion,
-    TLSClaims,
-    TLSVerified,
-    TLSRequired,
-    ConcurrentConnections,
-    Homepage,
-    HomepageRedirect,
-    PageNotFound,
-    RequestMissingCR,
-    URLIncludePort,
-    URLSchemeMissing,
-    URLByIPAddress,
-    URLInvalidUTF8Byte,
-    URLMaxSize,
-    URLAboveMaxSize,
-    URLWrongPort,
-    URLWrongHost,
-    URLSchemeHTTP,
-    URLSchemeHTTPS,
-    URLSchemeGopher,
-    URLEmpty,
-    URLRelative,
-    URLInvalid,
-    URLDotEscape,
-]
-
-
 # noinspection PyTypeChecker
 # fmt: off
 parser = argparse.ArgumentParser(
@@ -683,8 +665,8 @@ parser.add_argument(
 parser.add_argument(
     "--delay",
     type=float,
-    default=2,
-    help="seconds to sleep between checks (default: 2)",
+    default=1,
+    help="seconds to sleep between checks (default: 1)",
 )
 # fmt: on
 
