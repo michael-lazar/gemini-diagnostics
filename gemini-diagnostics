@@ -55,6 +55,9 @@ LOG_STYLES = {
 }
 
 
+CHECKS = []
+
+
 def log(text, style="normal"):
     prefix, color = LOG_STYLES[style]
     if prefix:
@@ -109,9 +112,6 @@ class GeminiResponse:
 
         charset = self.params.get("charset", "utf-8")
         self.body = fp.read().decode(charset)
-
-
-CHECKS = []
 
 
 class CheckRegistry(type):
@@ -174,7 +174,7 @@ class BaseCheck(metaclass=CheckRegistry):
                 yield ssock
 
     def make_request(self, url):
-        log("Requesting URL")
+        log("Request URL")
         log(f"{url!r}", style="info")
         with self.connection() as sock:
             sock.sendall(url.encode(errors="surrogateescape"))
@@ -373,7 +373,7 @@ class ResponseFormat(BaseCheck):
 
         log("There should be a single space between <STATUS> and <META>")
         success = response.header[2] == " " and response.header[3] != " "
-        log_test(f"{response.header[2:4]!r}", success)
+        log_test(f"{response.header[1:4]!r}", success)
 
         log('Mime type should be "text/gemini"')
         log_test(f"{response.mime!r}", response.mime == "text/gemini")
@@ -485,7 +485,7 @@ class URLByIPAddress(BaseCheck):
         response = self.make_request(url)
 
         log("Verify that the status matches your desired behavior")
-        log(f"{response.status!r}", style="info")
+        log(f"{response.status!r}", style="success")
 
 
 class URLInvalidUTF8Byte(BaseCheck):
