@@ -1,16 +1,16 @@
 # Gemini Diagnostics
 
-A diagnostic tool for [gemini](https://portal.mozz.us/gemini/gemini.circumlunar.space/) servers.
+A torture test for [gemini](https://portal.mozz.us/gemini/gemini.circumlunar.space/) servers.
 
 ## Requirements
 
-Python 3.7 or higher.
+Python 3.7 or newer.
 
-The tests that inspect TLS certificates additionally require that [cryptography](https://cryptography.io/en/latest/installation/) be installed.
+Tests that inspect TLS certificates additionally require that the [pyca/cryptography](https://cryptography.io/en/latest/installation/) library be installed.
 
 ## History
 
-This script originated from discussions on the [gemini mailing list](https://lists.orbitalfox.eu/listinfo/gemini) that it would be nice to have a gemini server "torture test" to uncover bugs and unhandled edge cases in new server implementations. It was originally called "jetforce-diagnostics" and was bundled in with the [jetforce](https://github.com/michael-lazar/jetforce) server. It has now been moved to its own repository and operates as a separate project.
+This script originated from an idea on the [gemini mailing list](https://lists.orbitalfox.eu/listinfo/gemini) that it would be nice to have a gemini "torture test" to uncover bugs and unhandled edge cases in new server implementations. It was originally called *jetforce-diagnostics* and was bundled with the [jetforce](https://github.com/michael-lazar/jetforce) server. Now it has been moved to its own repository and operates as a separate project.
 
 ## Usage
 
@@ -118,3 +118,7 @@ optional arguments:
 <dd>A URL should not be able to escape the root using dot notation.</dd>
 
 </dl>
+
+## Contributing
+
+Contributions are welcome!
