@@ -365,7 +365,7 @@ class ConcurrentConnections(BaseCheck):
 class ResponseFormat(BaseCheck):
     """Validate the response header and body for the root URL"""
 
-    def check(self) -> None:
+    def check(self):
         url = f"gemini://{self.netloc}/\r\n"
         response = self.make_request(url)
 
