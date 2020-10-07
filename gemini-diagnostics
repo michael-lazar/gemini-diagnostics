@@ -101,7 +101,11 @@ class GeminiResponse:
         log("Response header")
         log(f"{self.header!r}", style="info")
 
-        self.status, self.meta = self.header.strip().split(maxsplit=1)
+        self.status, *header_rest = self.header.strip().split(maxsplit=1)
+        self.meta = header_rest[0] if header_rest else ""
+
+        if not self.meta:
+            raise Exception("Status should include a <META> line")
 
         if self.status.startswith("2"):
             meta_parts = self.meta.split(";")
