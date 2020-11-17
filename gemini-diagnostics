@@ -173,10 +173,10 @@ class BaseCheck(metaclass=CheckRegistry):
             with context.wrap_socket(sock) as ssock:
                 yield ssock
 
-    def make_request(self, url):
+    def make_request(self, url, context=None):
         log("Request URL")
         log(f"{url!r}", style="info")
-        with self.connection() as sock:
+        with self.connection(context=context) as sock:
             sock.sendall(url.encode(errors="surrogateescape"))
             fp = sock.makefile("rb")
             response = GeminiResponse()
@@ -321,6 +321,34 @@ class TLSVerified(BaseCheck):
                 raise
         else:
             log("CA-signed TLS certificate detected", style="warning")
+
+
+class TLSCloseNotify(BaseCheck):
+    """Server should send a close_notify alert before closing the connection"""
+
+    def check(self):
+        log("Checking for close_notify TLS signal")
+
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+        close_notify_received = False
+
+        def msg_cb(connection, direction, v, c, m, data):
+            if m == ssl._TLSAlertType.CLOSE_NOTIFY and direction == 'read':
+                nonlocal close_notify_received
+                close_notify_received = True
+
+        context._msg_callback = msg_cb
+
+        url = f"//{self.netloc}/\r\n"
+        self.make_request(url, context)
+
+        if close_notify_received:
+            log("TLS close_notify signal was received successfully", style="success")
+        else:
+            log("TLS close_notify signal was not received", style="failure")
 
 
 class TLSRequired(BaseCheck):
