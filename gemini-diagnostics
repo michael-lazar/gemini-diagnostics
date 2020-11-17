@@ -174,7 +174,7 @@ class BaseCheck(metaclass=CheckRegistry):
 
         address = (self.args.host, self.args.port)
         with socket.create_connection(address, timeout=5) as sock:
-            with context.wrap_socket(sock) as ssock:
+            with context.wrap_socket(sock, server_hostname=self.args.host) as ssock:
                 yield ssock
 
     def make_request(self, url, context=None):
