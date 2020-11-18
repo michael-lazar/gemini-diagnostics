@@ -16,12 +16,9 @@ import socket
 import ssl
 import sys
 import time
-import typing
-import re
 
 if sys.version_info < (3, 7):
     sys.exit("Fatal Error: script requires Python 3.7+")
-
 
 __title__ = "Gemini Diagnostics"
 __author__ = "Michael Lazar"
@@ -29,9 +26,9 @@ __license__ = "MIT"
 __copyright__ = "(c) 2020 Michael Lazar"
 __version__ = "1.0.0"
 
+exit_code = 0
 
 socket.setdefaulttimeout(5)
-
 
 # ANSI color codes
 A_BOLD = 1
@@ -44,7 +41,6 @@ FG_MAGENTA = 35
 FG_CYAN = 36
 FG_WHITE = 37
 
-
 LOG_STYLES = {
     "normal": ["", None],
     "title": ["", A_BOLD],
@@ -54,11 +50,14 @@ LOG_STYLES = {
     "failure": ["  x ", FG_RED]
 }
 
-
 CHECKS = []
 
 
 def log(text, style="normal"):
+    if style == "failure":
+        global exit_code
+        exit_code = 1
+
     prefix, color = LOG_STYLES[style]
     if prefix:
         text = prefix + text
@@ -742,4 +741,5 @@ def run():
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    run()
+    sys.exit(exit_code)
