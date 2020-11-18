@@ -68,12 +68,6 @@ def log(text, style="normal"):
     print(text)
 
 
-def log_test(text, success):
-    if success:
-        log(text, "success")
-    else:
-        log(text, "failure")
-
 
 def log_error(err) -> None:
     text = str(err)
@@ -131,14 +125,17 @@ class BaseCheck(metaclass=CheckRegistry):
 
     def __init__(self, args):
         self.args = args
+        self.success = False
 
     def run(self):
         log(f"[{self.__class__.__name__}] {self.__doc__}", style="title")
         try:
             self.check()
         except Exception as e:
+            self.success = False
             log_error(e)
         log("")
+        return self.success
 
     def check(self):
         raise NotImplemented
@@ -189,19 +186,27 @@ class BaseCheck(metaclass=CheckRegistry):
 
     def assert_success(self, status):
         log("Status should return a success code (20 SUCCESS)")
-        log_test(f"Received status of {status!r}", status == "20")
+        self.log_test(f"Received status of {status!r}", status == "20")
 
     def assert_permanent_failure(self, status):
         log("Status should return a failure code (5X PERMANENT FAILURE)")
-        log_test(f"Received status of {status!r}", status.startswith("5"))
+        self.log_test(f"Received status of {status!r}", status.startswith("5"))
 
     def assert_proxy_refused(self, status):
         log("Status should return a failure code (53 PROXY REQUEST REFUSED)")
-        log_test(f"Received status of {status!r}", status == "53")
+        self.log_test(f"Received status of {status!r}", status == "53")
 
     def assert_bad_request(self, status):
         log("Status should return a failure code (59 BAD REQUEST)")
-        log_test(f"Received status of {status!r}", status == "59")
+        self.log_test(f"Received status of {status!r}", status == "59")
+
+    def log_test(self, text, success):
+        self.success = success
+        if success:
+            log(text, "success")
+        else:
+            log(text, "failure")
+
 
 
 class IPv4Address(BaseCheck):
@@ -217,6 +222,7 @@ class IPv4Address(BaseCheck):
             sock.connect(addr)
             sock.close()
         log(f"Successfully established connection", style="success")
+        self.success = True
 
 
 class IPv6Address(BaseCheck):
@@ -234,6 +240,7 @@ class IPv6Address(BaseCheck):
             sock.connect(addr)
             sock.close()
         log(f"Successfully established connection", style="success")
+        self.success = True
 
 
 class TLSVersion(BaseCheck):
@@ -250,8 +257,10 @@ class TLSVersion(BaseCheck):
                 log(f"Negotiated {version}", style="failure")
             elif version == "TLSv1.2":
                 log(f"Negotiated {version}", style="warning")
+                self.success = True
             else:
                 log(f"Negotiated {version}", style="success")
+                self.success = True
 
 
 class TLSClaims(BaseCheck):
@@ -274,10 +283,10 @@ class TLSClaims(BaseCheck):
             now = datetime.datetime.utcnow()
 
             log('Checking "Not Valid Before" timestamp')
-            log_test(f"{cert.not_valid_before} UTC", cert.not_valid_before <= now)
+            self.log_test(f"{cert.not_valid_before} UTC", cert.not_valid_before <= now)
 
             log('Checking "Not Valid After" timestamp')
-            log_test(f"{cert.not_valid_after} UTC", cert.not_valid_after >= now)
+            self.log_test(f"{cert.not_valid_after} UTC", cert.not_valid_after >= now)
 
             log("Checking subject claim matches server hostname")
             subject = []
@@ -306,6 +315,7 @@ class TLSClaims(BaseCheck):
             log(f"{cert_dict!r}", style="info")
             ssl.match_hostname(cert_dict, self.args.host)
             log(f"Hostname {self.args.host!r} matches claim", style="success")
+            self.success = True
 
 
 class TLSVerified(BaseCheck):
@@ -321,6 +331,7 @@ class TLSVerified(BaseCheck):
         except Exception as e:
             if getattr(e, "verify_code", None) == 18:
                 log("Self-signed TLS certificate detected", style="success")
+                self.success = True
             else:
                 raise
         else:
@@ -351,6 +362,7 @@ class TLSCloseNotify(BaseCheck):
 
         if close_notify_received:
             log("TLS close_notify signal was received successfully", style="success")
+            self.success = True
         else:
             log("TLS close_notify signal was not received", style="failure")
 
@@ -369,6 +381,7 @@ class TLSRequired(BaseCheck):
                     log(f"Received unexpected response {header!r}", style="failure")
                 else:
                     log(f"Connection closed by server", style="success")
+                    self.success = True
         except Exception as e:
             # A connection error is a valid response
             log(f"{e!r}", style="success")
@@ -392,6 +405,7 @@ class ConcurrentConnections(BaseCheck):
             log("Closing socket 1", style="info")
 
         log(f"Concurrent connections supported", style="success")
+        self.success = True
 
 
 class ResponseFormat(BaseCheck):
@@ -405,16 +419,16 @@ class ResponseFormat(BaseCheck):
 
         log("There should be a single space between <STATUS> and <META>")
         success = response.header[2] == " " and response.header[3] != " "
-        log_test(f"{response.header[1:4]!r}", success)
+        self.log_test(f"{response.header[1:4]!r}", success)
 
         log('Mime type should be "text/gemini"')
-        log_test(f"{response.mime!r}", response.mime == "text/gemini")
+        self.log_test(f"{response.mime!r}", response.mime == "text/gemini")
 
         log(r'Header should end with "\r\n"')
-        log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
+        self.log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
 
         log("Body should be non-empty")
-        log_test(f"{response.body[:50]!r}", response.body)
+        self.log_test(f"{response.body[:50]!r}", response.body)
 
         log(r'Body should use consistent line endings')
         lines = {"crlf": [], "lf": [], "other": []}
@@ -446,16 +460,16 @@ class HomepageRedirect(BaseCheck):
         response = self.make_request(url)
 
         log("Status should return code 31 (REDIRECT PERMANENT)")
-        log_test(f"{response.status!r}", response.status == "31")
+        self.log_test(f"{response.status!r}", response.status == "31")
 
         log('Meta should redirect to location "gemini://[hostname]/"')
-        log_test(f"{response.meta!r}", response.meta == f"gemini://{self.netloc}/")
+        self.log_test(f"{response.meta!r}", response.meta == f"gemini://{self.netloc}/")
 
         log(r'Header should end with "\r\n"')
-        log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
+        self.log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
 
         log("Body should be empty")
-        log_test(f"{response.body[:50]!r}", response.body == "")
+        self.log_test(f"{response.body[:50]!r}", response.body == "")
 
 
 class PageNotFound(BaseCheck):
@@ -466,13 +480,13 @@ class PageNotFound(BaseCheck):
         response = self.make_request(url)
 
         log("Status should return code 51 (NOT FOUND)")
-        log_test(f"{response.status!r}", response.status == "51")
+        self.log_test(f"{response.status!r}", response.status == "51")
 
         log('Header should end with "\\r\\n"')
-        log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
+        self.log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
 
         log("Body should be empty")
-        log_test(f"{response.body[:50]!r}", response.body == "")
+        self.log_test(f"{response.body[:50]!r}", response.body == "")
 
 
 class RequestMissingCR(BaseCheck):
@@ -485,6 +499,7 @@ class RequestMissingCR(BaseCheck):
         except Exception as e:
             log("No response should be received")
             log(f"{e}", style="success")
+            self.success = True
         else:
             log("No response should be received")
             log(f"{response.status!r}", style="failure")
@@ -518,6 +533,7 @@ class URLByIPAddress(BaseCheck):
 
         log("Verify that the status matches your desired behavior")
         log(f"{response.status!r}", style="success")
+        self.success = True
 
 
 class URLInvalidUTF8Byte(BaseCheck):
@@ -536,7 +552,7 @@ class URLInvalidUTF8Byte(BaseCheck):
         if response is None:
             log("Connection closed without response", style="success")
         else:
-            log_test(f"{response.status!r}", response.status == "59")
+            self.log_test(f"{response.status!r}", response.status == "59")
 
 
 class URLMaxSize(BaseCheck):
@@ -550,7 +566,7 @@ class URLMaxSize(BaseCheck):
 
         response = self.make_request(url)
         log("Status should return code 51 (NOT FOUND)")
-        log_test(f"{response.status!r}", response.status == "51")
+        self.log_test(f"{response.status!r}", response.status == "51")
 
 
 class URLAboveMaxSize(BaseCheck):
@@ -571,7 +587,7 @@ class URLAboveMaxSize(BaseCheck):
         if response is None:
             log("Connection closed without response", style="success")
         else:
-            log_test(f"{response.status!r}", response.status == "59")
+            self.log_test(f"{response.status!r}", response.status == "59")
 
 
 class URLWrongPort(BaseCheck):
@@ -735,10 +751,12 @@ def run():
 
     log(f"Running server diagnostics check against {args.host}:{args.port}")
     log("...\n")
+    all_pass = True
     for check in check_list:
         time.sleep(args.delay)
-        check(args).run()
+        all_pass = check(args).run() and all_pass
     log("Done!")
+    return 0 if all_pass else 1
 
 
 if __name__ == "__main__":
