@@ -47,7 +47,7 @@ LOG_STYLES = {
     "warning": ["  ", FG_YELLOW],
     "info": ["  ", FG_CYAN],
     "success": ["  ✓ ", FG_GREEN],
-    "failure": ["  x ", FG_RED]
+    "failure": ["  x ", FG_RED],
 }
 
 CHECKS = []
@@ -83,7 +83,6 @@ def log_error(err) -> None:
 
 
 class GeminiResponse:
-
     def __init__(self):
         self.header = None
         self.status = None
@@ -118,16 +117,14 @@ class GeminiResponse:
 
 
 class CheckRegistry(type):
-
     def __new__(cls, name, bases, namespace):
         cls = type.__new__(cls, name, bases, namespace)
-        if name != 'BaseCheck':
+        if name != "BaseCheck":
             CHECKS.append(cls)
         return cls
 
 
 class BaseCheck(metaclass=CheckRegistry):
-
     def __init__(self, args):
         self.args = args
 
@@ -339,7 +336,7 @@ class TLSCloseNotify(BaseCheck):
         close_notify_received = False
 
         def msg_cb(connection, direction, v, c, m, data):
-            if m == ssl._TLSAlertType.CLOSE_NOTIFY and direction == 'read':
+            if m == ssl._TLSAlertType.CLOSE_NOTIFY and direction == "read":
                 nonlocal close_notify_received
                 close_notify_received = True
 
@@ -415,7 +412,7 @@ class ResponseFormat(BaseCheck):
         log("Body should be non-empty")
         log_test(f"{response.body[:50]!r}", response.body)
 
-        log(r'Body should use consistent line endings')
+        log(r"Body should use consistent line endings")
         lines = {"crlf": [], "lf": [], "other": []}
         for line in response.body.splitlines(True):
             if line.endswith("\r\n"):
@@ -499,12 +496,12 @@ class URLIncludePort(BaseCheck):
 
 
 class URLSchemeMissing(BaseCheck):
-    """A URL without a scheme should be inferred as gemini"""
+    """A URL without a scheme should return an error message"""
 
     def check(self):
         url = f"//{self.netloc}/\r\n"
         response = self.make_request(url)
-        self.assert_success(response.status)
+        self.assert_bad_request(response.status)
 
 
 class URLByIPAddress(BaseCheck):
