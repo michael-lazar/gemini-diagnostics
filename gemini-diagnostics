@@ -434,24 +434,17 @@ class ResponseFormat(BaseCheck):
             log(r"All lines end with \n", style="success")
 
 
-class HomepageRedirect(BaseCheck):
-    """A URL with no trailing slash should redirect to the canonical resource"""
+class HomepageNoRedirect(BaseCheck):
+    """The root URL should return the same resource with or without the trailing slash."""
 
     def check(self):
         url = f"gemini://{self.netloc}\r\n"
         response = self.make_request(url)
+        self.assert_success(response.status)
 
-        log("Status should return code 31 (REDIRECT PERMANENT)")
-        log_test(f"{response.status!r}", response.status == "31")
-
-        log('Meta should redirect to location "gemini://[hostname]/"')
-        log_test(f"{response.meta!r}", response.meta == f"gemini://{self.netloc}/")
-
-        log(r'Header should end with "\r\n"')
-        log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
-
-        log("Body should be empty")
-        log_test(f"{response.body[:50]!r}", response.body == "")
+        url = f"gemini://{self.netloc}/\r\n"
+        response = self.make_request(url)
+        self.assert_success(response.status)
 
 
 class PageNotFound(BaseCheck):
