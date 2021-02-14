@@ -141,10 +141,17 @@ class BaseCheck(metaclass=CheckRegistry):
 
     @property
     def netloc(self):
+        host = self.args.host
+        try:
+            ipaddress.IPv6Address(host)
+            host= "[" + host + "]"
+        except ipaddress.AddressValueError:
+            pass
+
         if self.args.port == 1965:
-            return self.args.host
+            return host
         else:
-            return f"{self.args.host}:{self.args.port}"
+            return f"{host}:{self.args.port}"
 
     def resolve_host(self, family):
         host = self.args.host
