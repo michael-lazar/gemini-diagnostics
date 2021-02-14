@@ -293,8 +293,8 @@ class TLSClaims(BaseCheck):
                 for ip_address in ext.value.get_values_for_type(
                     cryptography.x509.IPAddress
                 ):
-                    subject_alt_name.append(("IP Address", ip_address))
-
+                    # we need the explicit str here as we might get ipaddress.IPv6Address or ipaddress.IPv4Address which would later on in the ssl.match_hostname cause an rstrip error
+                    subject_alt_name.append(("IP Address", str(ip_address)))
             cert_dict = {
                 "subject": (tuple(subject),),
                 "subjectAltName": tuple(subject_alt_name),
