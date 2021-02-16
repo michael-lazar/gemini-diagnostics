@@ -188,6 +188,9 @@ class BaseCheck(metaclass=CheckRegistry):
             fp = sock.makefile("rb")
             response = GeminiResponse()
             response.read(fp)
+            if self.args.nice:
+                s = sock.unwrap()
+                s.close()
             return response
 
     def assert_success(self, status):
@@ -255,6 +258,9 @@ class TLSVersion(BaseCheck):
                 log(f"Negotiated {version}", style="warning")
             else:
                 log(f"Negotiated {version}", style="success")
+            if self.args.nice:
+                s = sock.unwrap()
+                s.close()
 
 
 class TLSClaims(BaseCheck):
@@ -391,8 +397,22 @@ class ConcurrentConnections(BaseCheck):
                 log("Opening socket 2", style="info")
                 sock2.sendall(url.encode())
                 log("Closing socket 2", style="info")
+                if self.args.nice:
+                    fp = sock2.makefile("rb")
+                    response = GeminiResponse()
+                    response.read(fp)
+                    s = sock2.unwrap()
+                    s.close()
             sock.sendall(url[1:].encode())
             log("Closing socket 1", style="info")
+
+            if self.args.nice:
+                fp = sock.makefile("rb")
+                response = GeminiResponse()
+                response.read(fp)
+                s = sock.unwrap()
+                s.close()
+
 
         log(f"Concurrent connections supported", style="success")
 
@@ -643,7 +663,7 @@ class URLInvalid(BaseCheck):
 
 
 class URLDotEscape(BaseCheck):
-    """A URL should not be able to escape the root using dot notation"""
+    """An URL should not be able to escape the root using dot notation"""
 
     def check(self):
         url = f"gemini://{self.netloc}/../../\r\n"
@@ -695,6 +715,14 @@ parser.add_argument(
     type=float,
     default=1,
     help="seconds to sleep between checks (default: 1)",
+)
+
+parser.add_argument(
+    "--play-nice",
+    dest = "nice",
+    action="store_true",
+    default=False,
+    help="Do a functionial test or be rude (defautl: 0 rude)",
 )
 # fmt: on
 
