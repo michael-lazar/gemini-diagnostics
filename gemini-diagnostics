@@ -140,11 +140,20 @@ class BaseCheck(metaclass=CheckRegistry):
         raise NotImplemented
 
     @property
-    def netloc(self):
-        if self.args.port == 1965:
+    def host(self):
+        try:
+            ipaddress.IPv6Address(self.args.host)
+        except ipaddress.AddressValueError:
             return self.args.host
         else:
-            return f"{self.args.host}:{self.args.port}"
+            return f"[{self.args.host}]"
+
+    @property
+    def netloc(self):
+        if self.args.port == 1965:
+            return self.host
+        else:
+            return f"{self.host}:{self.args.port}"
 
     def resolve_host(self, family):
         host = self.args.host
@@ -293,8 +302,7 @@ class TLSClaims(BaseCheck):
                 for ip_address in ext.value.get_values_for_type(
                     cryptography.x509.IPAddress
                 ):
-                    subject_alt_name.append(("IP Address", ip_address))
-
+                    subject_alt_name.append(("IP Address", str(ip_address)))
             cert_dict = {
                 "subject": (tuple(subject),),
                 "subjectAltName": tuple(subject_alt_name),
@@ -483,7 +491,7 @@ class URLIncludePort(BaseCheck):
     """Send the URL with the port explicitly defined"""
 
     def check(self):
-        url = f"gemini://{self.args.host}:{self.args.port}/\r\n"
+        url = f"gemini://{self.host}:{self.args.port}/\r\n"
         response = self.make_request(url)
         self.assert_success(response.status)
 
@@ -567,7 +575,7 @@ class URLWrongPort(BaseCheck):
     """A URL with an incorrect port number should be rejected"""
 
     def check(self):
-        url = f"gemini://{self.args.host}:443/\r\n"
+        url = f"gemini://{self.host}:443/\r\n"
         response = self.make_request(url)
         self.assert_proxy_refused(response.status)
 
