@@ -34,6 +34,7 @@ optional arguments:
   --checks CHECKS  comma separated list of checks to apply
   --show-checks    display the complete list of checks and exit
   --delay DELAY    seconds to sleep between checks (default: 2)
+  --play-nice      do a functionial test or be rude (defautl: 0 rude)"
 ```
 
 ## Supported Tests

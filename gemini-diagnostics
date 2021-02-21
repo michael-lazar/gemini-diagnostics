@@ -16,6 +16,7 @@ import socket
 import ssl
 import sys
 import time
+import _thread
 
 if sys.version_info < (3, 7):
     sys.exit("Fatal Error: script requires Python 3.7+")
@@ -190,6 +191,9 @@ class BaseCheck(metaclass=CheckRegistry):
             fp = sock.makefile("rb")
             response = GeminiResponse()
             response.read(fp)
+            if self.args.nice:
+                s = sock.unwrap()
+                s.close()
             return response
 
     def assert_success(self, status):
@@ -257,6 +261,9 @@ class TLSVersion(BaseCheck):
                 log(f"Negotiated {version}", style="warning")
             else:
                 log(f"Negotiated {version}", style="success")
+            if self.args.nice:
+                s = sock.unwrap()
+                s.close()
 
 
 class TLSClaims(BaseCheck):
@@ -392,8 +399,22 @@ class ConcurrentConnections(BaseCheck):
                 log("Opening socket 2", style="info")
                 sock2.sendall(url.encode())
                 log("Closing socket 2", style="info")
+                if self.args.nice:
+                    fp = sock2.makefile("rb")
+                    response = GeminiResponse()
+                    response.read(fp)
+                    s = sock2.unwrap()
+                    s.close()
             sock.sendall(url[1:].encode())
             log("Closing socket 1", style="info")
+
+            if self.args.nice:
+                fp = sock.makefile("rb")
+                response = GeminiResponse()
+                response.read(fp)
+                s = sock.unwrap()
+                s.close()
+
 
         log(f"Concurrent connections supported", style="success")
 
@@ -644,13 +665,56 @@ class URLInvalid(BaseCheck):
 
 
 class URLDotEscape(BaseCheck):
-    """A URL should not be able to escape the root using dot notation"""
+    """An URL should not be able to escape the root using dot notation"""
 
     def check(self):
         url = f"gemini://{self.netloc}/../../\r\n"
         response = self.make_request(url)
         self.assert_permanent_failure(response.status)
 
+class RateLimit(BaseCheck):
+    """Check if a rate limit is in place. Only perfomed with --abuse flag"""
+    def __init__(self, args):
+        super().__init__(args)
+        self.stop = False
+
+    def check(self):
+        if not self.args.abuse:
+            return
+        url = f"gemini://{self.netloc}/\r\n"
+        counter = 0
+        MAX_ROUNDS = 10000
+        while not self.stop:
+            _thread.start_new_thread(self.raceToLimit, (url,))
+            time.sleep(0.001)
+            counter += 1
+            if counter == MAX_ROUNDS:
+                log(f"Rate limit failed", style="failure")
+                return
+        log_test(f"{self.response.status!r}", self.response.status == "44")
+        log(f"Timeout is {self.response.meta} seconds", style="success")
+
+    def raceToLimit(self, url):
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+
+        address = (self.args.host, self.args.port)
+        with socket.create_connection(address, timeout=5) as sock:
+            with context.wrap_socket(sock, server_hostname=self.args.host) as ssock:
+                    ssock.sendall(url.encode(errors="surrogateescape"))
+                    fp = ssock.makefile("rb")
+                    response = GeminiResponse()
+                    response.read(fp)
+                    if self.args.nice:
+                        s = ssock.unwrap()
+                        s.close()
+
+                    if response.status == "44":
+                        self.response = response
+                        self.stop = True
+                    _thread.exit()
 
 # noinspection PyTypeChecker
 # fmt: off
@@ -697,6 +761,23 @@ parser.add_argument(
     default=1,
     help="seconds to sleep between checks (default: 1)",
 )
+
+parser.add_argument(
+    "--play-nice",
+    dest = "nice",
+    action="store_true",
+    default=False,
+    help="Do a functionial test or be rude (defautl: 0 rude)",
+)
+
+parser.add_argument(
+    "--abuse",
+    dest = "abuse",
+    action="store_true",
+    default=False,
+    help="Use Test functions that are clearly abusing the server (default: 0)",
+)
+
 # fmt: on
 
 
