@@ -16,12 +16,9 @@ import socket
 import ssl
 import sys
 import time
-import typing
-import re
 
 if sys.version_info < (3, 7):
     sys.exit("Fatal Error: script requires Python 3.7+")
-
 
 __title__ = "Gemini Diagnostics"
 __author__ = "Michael Lazar"
@@ -29,9 +26,9 @@ __license__ = "MIT"
 __copyright__ = "(c) 2020 Michael Lazar"
 __version__ = "1.0.0"
 
+exit_code = 0
 
 socket.setdefaulttimeout(5)
-
 
 # ANSI color codes
 A_BOLD = 1
@@ -44,21 +41,23 @@ FG_MAGENTA = 35
 FG_CYAN = 36
 FG_WHITE = 37
 
-
 LOG_STYLES = {
     "normal": ["", None],
     "title": ["", A_BOLD],
     "warning": ["  ", FG_YELLOW],
     "info": ["  ", FG_CYAN],
     "success": ["  ✓ ", FG_GREEN],
-    "failure": ["  x ", FG_RED]
+    "failure": ["  x ", FG_RED],
 }
-
 
 CHECKS = []
 
 
 def log(text, style="normal"):
+    if style == "failure":
+        global exit_code
+        exit_code = 1
+
     prefix, color = LOG_STYLES[style]
     if prefix:
         text = prefix + text
@@ -84,7 +83,6 @@ def log_error(err) -> None:
 
 
 class GeminiResponse:
-
     def __init__(self):
         self.header = None
         self.status = None
@@ -119,16 +117,14 @@ class GeminiResponse:
 
 
 class CheckRegistry(type):
-
     def __new__(cls, name, bases, namespace):
         cls = type.__new__(cls, name, bases, namespace)
-        if name != 'BaseCheck':
+        if name != "BaseCheck":
             CHECKS.append(cls)
         return cls
 
 
 class BaseCheck(metaclass=CheckRegistry):
-
     def __init__(self, args):
         self.args = args
         self.result = None
@@ -147,11 +143,20 @@ class BaseCheck(metaclass=CheckRegistry):
         raise NotImplemented
 
     @property
-    def netloc(self):
-        if self.args.port == 1965:
+    def host(self):
+        try:
+            ipaddress.IPv6Address(self.args.host)
+        except ipaddress.AddressValueError:
             return self.args.host
         else:
-            return f"{self.args.host}:{self.args.port}"
+            return f"[{self.args.host}]"
+
+    @property
+    def netloc(self):
+        if self.args.port == 1965:
+            return self.host
+        else:
+            return f"{self.host}:{self.args.port}"
 
     def resolve_host(self, family):
         host = self.args.host
@@ -177,13 +182,13 @@ class BaseCheck(metaclass=CheckRegistry):
 
         address = (self.args.host, self.args.port)
         with socket.create_connection(address, timeout=5) as sock:
-            with context.wrap_socket(sock) as ssock:
+            with context.wrap_socket(sock, server_hostname=self.args.host) as ssock:
                 yield ssock
 
-    def make_request(self, url):
+    def make_request(self, url, context=None):
         log("Request URL")
         log(f"{url!r}", style="info")
-        with self.connection() as sock:
+        with self.connection(context=context) as sock:
             sock.sendall(url.encode(errors="surrogateescape"))
             fp = sock.makefile("rb")
             response = GeminiResponse()
@@ -311,8 +316,7 @@ class TLSClaims(BaseCheck):
                 for ip_address in ext.value.get_values_for_type(
                     cryptography.x509.IPAddress
                 ):
-                    subject_alt_name.append(("IP Address", ip_address))
-
+                    subject_alt_name.append(("IP Address", str(ip_address)))
             cert_dict = {
                 "subject": (tuple(subject),),
                 "subjectAltName": tuple(subject_alt_name),
@@ -343,6 +347,34 @@ class TLSVerified(BaseCheck):
         else:
             log("CA-signed TLS certificate detected", style="warning")
             self.result = True
+
+
+class TLSCloseNotify(BaseCheck):
+    """Server should send a close_notify alert before closing the connection"""
+
+    def check(self):
+        log("Checking for close_notify TLS signal")
+
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+        close_notify_received = False
+
+        def msg_cb(connection, direction, v, c, m, data):
+            if m == ssl._TLSAlertType.CLOSE_NOTIFY and direction == "read":
+                nonlocal close_notify_received
+                close_notify_received = True
+
+        context._msg_callback = msg_cb
+
+        url = f"gemini://{self.netloc}/\r\n"
+        self.make_request(url, context)
+
+        if close_notify_received:
+            log("TLS close_notify signal was received successfully", style="success")
+        else:
+            log("TLS close_notify signal was not received", style="failure")
 
 
 class TLSRequired(BaseCheck):
@@ -416,7 +448,7 @@ class ResponseFormat(BaseCheck):
 
         self.result = self.result and response.body
 
-        log(r'Body should use consistent line endings')
+        log(r"Body should use consistent line endings")
         lines = {"crlf": [], "lf": [], "other": []}
         for line in response.body.splitlines(True):
             if line.endswith("\r\n"):
@@ -442,12 +474,11 @@ class ResponseFormat(BaseCheck):
             self.result = self.result and True
 
 class HomepageNoRedirect(BaseCheck):
-    """As per the current specification, "a empty path component and a path component of "/" are equivalent and servers MUST support both without sending a redirection"."""
+    """The root URL should return the same resource with or without the trailing slash."""
 
     def check(self):
-        url = f"gemini://{self.netloc}\r\n"
+        url = f"gemini://{self.netloc}/\r\n"
         response = self.make_request(url)
-
         self.assert_success(response.status)
 
 class PageNotFound(BaseCheck):
@@ -494,7 +525,7 @@ class URLIncludePort(BaseCheck):
     """Send the URL with the port explicitly defined"""
 
     def check(self):
-        url = f"gemini://{self.args.host}:{self.args.port}/\r\n"
+        url = f"gemini://{self.host}:{self.args.port}/\r\n"
         response = self.make_request(url)
         self.assert_success(response.status)
 
@@ -580,7 +611,7 @@ class URLWrongPort(BaseCheck):
     """A URL with an incorrect port number should be rejected"""
 
     def check(self):
-        url = f"gemini://{self.args.host}:443/\r\n"
+        url = f"gemini://{self.host}:443/\r\n"
         response = self.make_request(url)
         self.assert_proxy_refused(response.status)
 
@@ -754,4 +785,5 @@ def run():
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    run()
+    sys.exit(exit_code)

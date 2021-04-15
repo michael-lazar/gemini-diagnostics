@@ -54,14 +54,17 @@ optional arguments:
 <dt>[TLSVerified]</dt>
 <dd>Certificate should be self-signed or have a trusted issuer.</dd>
 
+<dt>[TLSCloseNotify]</dt>
+<dd>Server should send a close_notify alert before closing the connection.</dd>
+
 <dt>[TLSRequired]</dt>
 <dd>Non-TLS requests should be refused.</dd>
 
 <dt>[ConcurrentConnections]</dt>
 <dd>Server should support concurrent connections.</dd>
 
-<dt>[Homepage]</dt>
-<dd>Request the gemini homepage.</dd>
+<dt>[ResponseFormat]</dt>
+<dd>Validate the response header and body for the root URL.</dd>
 
 <dt>[HomepageRedirect]</dt>
 <dd>A URL with no trailing slash should redirect to the canonical resource.</dd>
