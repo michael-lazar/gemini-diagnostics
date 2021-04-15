@@ -375,6 +375,7 @@ class TLSCloseNotify(BaseCheck):
             log("TLS close_notify signal was received successfully", style="success")
         else:
             log("TLS close_notify signal was not received", style="failure")
+        self.result = close_notify_received
 
 
 class TLSRequired(BaseCheck):
