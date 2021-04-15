@@ -66,8 +66,8 @@ optional arguments:
 <dt>[ResponseFormat]</dt>
 <dd>Validate the response header and body for the root URL.</dd>
 
-<dt>[HomepageRedirect]</dt>
-<dd>A URL with no trailing slash should redirect to the canonical resource.</dd>
+<dt>[HomepageNoRedirect]</dt>
+<dd>The root URL should return the same resource with or without the trailing slash..</dd>
 
 <dt>[PageNotFound]</dt>
 <dd>Request a gemini URL that does not exist.</dd>
@@ -79,7 +79,7 @@ optional arguments:
 <dd>Send the URL with the port explicitly defined.</dd>
 
 <dt>[URLSchemeMissing]</dt>
-<dd>A URL without a scheme should be inferred as gemini.</dd>
+<dd>A URL without a scheme should result in a 59 Bad Request.</dd>
 
 <dt>[URLByIPAddress]</dt>
 <dd>Send the URL using the IPv4 address.</dd>
