@@ -135,7 +135,7 @@ class BaseCheck(metaclass=CheckRegistry):
             self.check()
         except Exception as e:
             log_error(e)
-            self.result = False # an errored test fails
+            self.result = False  # an errored test fails
         log("")
         return self.result
 
@@ -195,24 +195,28 @@ class BaseCheck(metaclass=CheckRegistry):
             response.read(fp)
             return response
 
-    def assert_success(self, status, explain = True):
-        if explain: log("Status should return a success code (20 SUCCESS)")
-        self.result = (status == "20")
+    def assert_success(self, status, explain=True):
+        if explain:
+            log("Status should return a success code (20 SUCCESS)")
+        self.result = status == "20"
         log_test(f"Received status of {status!r}", self.result)
 
-    def assert_permanent_failure(self, status, explain = True):
-        if explain: log("Status should return a failure code (5X PERMANENT FAILURE)")
+    def assert_permanent_failure(self, status, explain=True):
+        if explain:
+            log("Status should return a failure code (5X PERMANENT FAILURE)")
         self.result = status.startswith("5")
         log_test(f"Received status of {status!r}", self.result)
 
-    def assert_proxy_refused(self, status, explain = True):
-        if explain: log("Status should return a failure code (53 PROXY REQUEST REFUSED)")
-        self.result = (status == "53")
+    def assert_proxy_refused(self, status, explain=True):
+        if explain:
+            log("Status should return a failure code (53 PROXY REQUEST REFUSED)")
+        self.result = status == "53"
         log_test(f"Received status of {status!r}", self.result)
 
-    def assert_bad_request(self, status, explain = True):
-        if explain: log("Status should return a failure code (59 BAD REQUEST)")
-        self.result = (status == "59")
+    def assert_bad_request(self, status, explain=True):
+        if explain:
+            log("Status should return a failure code (59 BAD REQUEST)")
+        self.result = status == "59"
         log_test(f"Received status of {status!r}", self.result)
 
 
@@ -269,6 +273,7 @@ class TLSVersion(BaseCheck):
                 log(f"Negotiated {version}", style="success")
                 self.result = True
 
+
 class TLSClaims(BaseCheck):
     """Certificate claims must be valid"""
 
@@ -291,7 +296,7 @@ class TLSClaims(BaseCheck):
             log('Checking "Not Valid Before" timestamp')
             log_test(f"{cert.not_valid_before} UTC", cert.not_valid_before <= now)
 
-            self.result = (cert.not_valid_before <= now)
+            self.result = cert.not_valid_before <= now
 
             log('Checking "Not Valid After" timestamp')
             log_test(f"{cert.not_valid_after} UTC", cert.not_valid_after >= now)
@@ -399,6 +404,7 @@ class TLSRequired(BaseCheck):
             log(f"{e!r}", style="success")
             self.result = True
 
+
 class ConcurrentConnections(BaseCheck):
     """Server should support concurrent connections"""
 
@@ -418,6 +424,7 @@ class ConcurrentConnections(BaseCheck):
 
         log(f"Concurrent connections supported", style="success")
         self.result = True
+
 
 class ResponseFormat(BaseCheck):
     """Validate the response header and body for the root URL"""
@@ -474,6 +481,7 @@ class ResponseFormat(BaseCheck):
             log(r"All lines end with \n", style="success")
             self.result = self.result and True
 
+
 class HomepageNoRedirect(BaseCheck):
     """The root URL should return the same resource with or without the trailing slash."""
 
@@ -481,6 +489,7 @@ class HomepageNoRedirect(BaseCheck):
         url = f"gemini://{self.netloc}/\r\n"
         response = self.make_request(url)
         self.assert_success(response.status)
+
 
 class PageNotFound(BaseCheck):
     """Request a gemini URL that does not exist"""
@@ -492,7 +501,7 @@ class PageNotFound(BaseCheck):
         log("Status should return code 51 (NOT FOUND)")
         log_test(f"{response.status!r}", response.status == "51")
 
-        self.result = (response.status == "51")
+        self.result = response.status == "51"
 
         log('Header should end with "\\r\\n"')
         log_test(f"{response.header[-2:]!r}", response.header.endswith("\r\n"))
@@ -569,7 +578,7 @@ class URLInvalidUTF8Byte(BaseCheck):
             log("Connection closed without response", style="success")
             self.result = False
         else:
-            self.assert_bad_request(response.status,False)
+            self.assert_bad_request(response.status, False)
 
 
 class URLMaxSize(BaseCheck):
@@ -584,7 +593,7 @@ class URLMaxSize(BaseCheck):
         response = self.make_request(url)
         log("Status should return code 51 (NOT FOUND)")
         log_test(f"{response.status!r}", response.status == "51")
-        self.result = (response.status == "51")
+        self.result = response.status == "51"
 
 
 class URLAboveMaxSize(BaseCheck):
@@ -605,7 +614,7 @@ class URLAboveMaxSize(BaseCheck):
         if response is None:
             log("Connection closed without response", style="success")
         else:
-            self.assert_bad_request(response.status,False)
+            self.assert_bad_request(response.status, False)
 
 
 class URLWrongPort(BaseCheck):
@@ -776,13 +785,25 @@ def run():
         result = check(args).run()
         if result is None:
             none_checks.append(check.__name__)
-        elif not result: # result == False
+        elif not result:  # result == False
             failed_checks.append(check.__name__)
     log("Done!")
     if failed_checks:
-        log("Failed {!s} check{}: {}".format(len(failed_checks),"" if len(failed_checks)==1 else "s",", ".join(failed_checks)))
+        log(
+            "Failed {!s} check{}: {}".format(
+                len(failed_checks),
+                "" if len(failed_checks) == 1 else "s",
+                ", ".join(failed_checks),
+            )
+        )
     if none_checks:
-        log("{!s} check{} returned None: {}".format(len(none_checks),"" if len(none_checks)==1 else "s",", ".join(none_checks)))
+        log(
+            "{!s} check{} returned None: {}".format(
+                len(none_checks),
+                "" if len(none_checks) == 1 else "s",
+                ", ".join(none_checks),
+            )
+        )
 
 
 if __name__ == "__main__":
