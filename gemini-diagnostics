@@ -117,11 +117,11 @@ class GeminiResponse:
 
 
 class CheckRegistry(type):
-    def __new__(cls, name, bases, namespace):
-        cls = type.__new__(cls, name, bases, namespace)
+    def __new__(mcs, name, bases, namespace):
+        mcs = type.__new__(mcs, name, bases, namespace)
         if name != "BaseCheck":
-            CHECKS.append(cls)
-        return cls
+            CHECKS.append(mcs)
+        return mcs
 
 
 class BaseCheck(metaclass=CheckRegistry):
@@ -281,7 +281,7 @@ class TLSClaims(BaseCheck):
         try:
             import cryptography
             from cryptography.hazmat.backends import default_backend
-            from cryptography.x509.oid import NameOID, ExtensionOID
+            from cryptography.x509.oid import ExtensionOID, NameOID
         except ImportError:
             raise UserWarning("cryptography library not installed, skipping check")
 
@@ -367,7 +367,7 @@ class TLSCloseNotify(BaseCheck):
         close_notify_received = False
 
         def msg_cb(connection, direction, v, c, m, data):
-            if m == ssl._TLSAlertType.CLOSE_NOTIFY and direction == "read":
+            if m == ssl._TLSAlertType.CLOSE_NOTIFY and direction == "read":  # noqa
                 nonlocal close_notify_received
                 close_notify_received = True
 
