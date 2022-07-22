@@ -23,7 +23,7 @@ if sys.version_info < (3, 7):
 __title__ = "Gemini Diagnostics"
 __author__ = "Michael Lazar"
 __license__ = "MIT"
-__copyright__ = "(c) 2020 Michael Lazar"
+__copyright__ = "(c) 2022 Michael Lazar"
 __version__ = "1.0.0"
 
 exit_code = 0
