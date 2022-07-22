@@ -280,7 +280,7 @@ class TLSClaims(BaseCheck):
     def check(self):
         try:
             import cryptography
-            from cryptography.hazmat.backends import default_backend
+            from cryptography.x509 import load_der_x509_certificate
             from cryptography.x509.oid import ExtensionOID, NameOID
         except ImportError:
             raise UserWarning("cryptography library not installed, skipping check")
@@ -290,7 +290,7 @@ class TLSClaims(BaseCheck):
             # Because many gemini servers use self-signed certs, we need to use
             # a third-party library to parse the certs from their binary form.
             der_x509 = sock.getpeercert(binary_form=True)
-            cert = default_backend().load_der_x509_certificate(der_x509)
+            cert = load_der_x509_certificate(der_x509)
             now = datetime.datetime.utcnow()
 
             log('Checking "Not Valid Before" timestamp')
